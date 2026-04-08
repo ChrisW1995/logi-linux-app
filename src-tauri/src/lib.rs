@@ -19,6 +19,13 @@ fn check_solaar() {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "hidpp=debug,logi_linux_app=debug".parse().unwrap()),
+        )
+        .init();
+
     check_solaar();
 
     tauri::Builder::default()
