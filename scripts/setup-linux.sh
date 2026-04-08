@@ -137,21 +137,16 @@ EOF
     info "udev rules installed (replug your device or reboot)"
 }
 
-check_logiflow() {
+verify_build() {
     local script_dir
     script_dir="$(cd "$(dirname "$0")" && pwd)"
     local project_dir
     project_dir="$(dirname "$script_dir")"
-    local logiflow_dir
-    logiflow_dir="$(dirname "$project_dir")/logiflow-linux"
 
-    if [ -d "$logiflow_dir/crates/hidpp" ]; then
-        info "logiflow-linux found at: $logiflow_dir"
-    else
-        error "logiflow-linux not found at: $logiflow_dir
-The hidpp crate is referenced via path dependency (../../logiflow-linux/crates/hidpp).
-Clone logiflow-linux as a sibling directory of logi-linux-app."
-    fi
+    info "Verifying Rust build..."
+    cd "$project_dir/src-tauri"
+    cargo check 2>&1 | tail -1
+    info "Build verified"
 }
 
 install_npm_deps() {
@@ -178,8 +173,8 @@ main() {
     install_node
     install_tauri_cli
     setup_udev
-    check_logiflow
     install_npm_deps
+    verify_build
 
     echo ""
     info "Setup complete! Run the app with:"
