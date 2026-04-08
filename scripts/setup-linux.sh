@@ -72,13 +72,25 @@ install_system_deps() {
 
 install_rust() {
     if command -v rustc &>/dev/null; then
-        info "Rust already installed: $(rustc --version)"
+        info "Rust found: $(rustc --version), updating..."
+        rustup update stable 2>&1 | tail -1
     else
         info "Installing Rust..."
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
         source "$HOME/.cargo/env"
-        info "Rust installed: $(rustc --version)"
     fi
+
+    # Verify minimum version (edition2024 requires >= 1.85)
+    local rust_ver
+    rust_ver=$(rustc --version | grep -oE '[0-9]+\.[0-9]+' | head -1)
+    local rust_major rust_minor
+    rust_major=$(echo "$rust_ver" | cut -d. -f1)
+    rust_minor=$(echo "$rust_ver" | cut -d. -f2)
+    if [ "$rust_major" -lt 1 ] || { [ "$rust_major" -eq 1 ] && [ "$rust_minor" -lt 85 ]; }; then
+        error "Rust >= 1.85 required (got $rust_ver). Run: rustup update stable"
+    fi
+
+    info "Rust ready: $(rustc --version)"
 }
 
 install_node() {
