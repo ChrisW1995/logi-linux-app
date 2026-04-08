@@ -166,22 +166,26 @@ fn read_probe_response(device: &HidDevice, device_index: u8) -> ProbeResult {
             Err(_) => continue,
         };
 
+        let sub_id = buf[2];
         debug!(
-            "  Response: dev={} feat=0x{:02X} fn={} err={}",
-            resp.device_index(),
-            resp.feature_index(),
-            resp.function_id(),
-            resp.is_error()
+            "  Response: dev={} sub_id/feat=0x{:02X} fn={} raw=[{:02X},{:02X},{:02X},{:02X},{:02X},{:02X},{:02X}]",
+            resp.device_index(), sub_id, resp.function_id(),
+            buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6]
         );
+
+        // HID++ 1.0 error response (sub_id = 0x8F) — receiver says no device
+        if sub_id == 0x8F {
+            debug!("  HID++ 1.0 error for device {} (error code: 0x{:02X})", device_index, buf[5]);
+            return ProbeResult::NoDevice;
+        }
 
         // Must match our target device index
         if resp.device_index() != device_index {
-            // Response for a different device index — skip
             debug!("  Skipping response for device {}", resp.device_index());
             continue;
         }
 
-        // Error response for our device → no device or error
+        // HID++ 2.0 error response (feature_index = 0xFF)
         if resp.is_error() {
             debug!("  Error response for device {}", device_index);
             return ProbeResult::NoDevice;
@@ -256,7 +260,8 @@ fn read_matching_response(
             Err(_) => continue,
         };
 
-        if resp.is_error() && resp.device_index() == device_index {
+        // HID++ 1.0 error (0x8F) or HID++ 2.0 error (0xFF)
+        if buf[2] == 0x8F || (resp.is_error() && resp.device_index() == device_index) {
             return None;
         }
 

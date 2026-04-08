@@ -20,37 +20,49 @@ pub struct DeviceBatteryDto {
 }
 
 #[tauri::command]
-pub fn list_devices() -> Result<Vec<DeviceDto>, String> {
-    device::find_logitech_devices()
-        .map(|devs| {
-            devs.into_iter()
-                .map(|d| DeviceDto {
-                    path: d.path.clone(),
-                    product_id: format!("0x{:04X}", d.product_id),
-                    product_name: d.product_name.clone(),
-                    device_index: d.device_index,
-                })
-                .collect()
-        })
-        .map_err(|e| e.to_string())
+pub async fn list_devices() -> Result<Vec<DeviceDto>, String> {
+    tokio::task::spawn_blocking(|| {
+        device::find_logitech_devices()
+            .map(|devs| {
+                devs.into_iter()
+                    .map(|d| DeviceDto {
+                        path: d.path.clone(),
+                        product_id: format!("0x{:04X}", d.product_id),
+                        product_name: d.product_name.clone(),
+                        device_index: d.device_index,
+                    })
+                    .collect()
+            })
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn get_device_battery(path: String, device_index: u8) -> DeviceBatteryDto {
-    let info = hidpp::device::LogitechDeviceInfo {
-        path: path.clone(),
-        product_id: 0,
-        product_name: String::new(),
-        device_index,
-    };
+pub async fn get_device_battery(path: String, device_index: u8) -> DeviceBatteryDto {
+    tokio::task::spawn_blocking(move || {
+        let info = hidpp::device::LogitechDeviceInfo {
+            path: path.clone(),
+            product_id: 0,
+            product_name: String::new(),
+            device_index,
+        };
 
-    match device::open_device(&info) {
-        Ok(access) => match access.get_battery() {
-            Ok(battery) => DeviceBatteryDto { path, battery, error: None },
+        match device::open_device(&info) {
+            Ok(access) => match access.get_battery() {
+                Ok(battery) => DeviceBatteryDto { path, battery, error: None },
+                Err(e) => DeviceBatteryDto { path, battery: None, error: Some(e.to_string()) },
+            },
             Err(e) => DeviceBatteryDto { path, battery: None, error: Some(e.to_string()) },
-        },
-        Err(e) => DeviceBatteryDto { path, battery: None, error: Some(e.to_string()) },
-    }
+        }
+    })
+    .await
+    .unwrap_or_else(|e| DeviceBatteryDto {
+        path: String::new(),
+        battery: None,
+        error: Some(e.to_string()),
+    })
 }
 
 #[cfg(test)]
