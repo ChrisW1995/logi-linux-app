@@ -31,11 +31,11 @@ function DeviceIcon({ productName }: { productName: string }) {
 }
 
 export function DeviceCard({ device }: { device: DeviceWithBattery }) {
-  const thumbnail = getDeviceThumbnail(device.product_id);
-  const displayName = getDeviceDisplayName(
-    device.product_id,
-    device.product_name,
-  );
+  // product_name from backend is the HID++ device name (e.g. "MX Master 4")
+  // product_id is the receiver PID for paired devices, so catalog lookup for name is wrong
+  // Use product_name directly, only use catalog for thumbnail matching by name
+  const thumbnail = getDeviceThumbnail(device.product_name);
+  const displayName = device.product_name;
 
   return (
     <Card className="group w-full overflow-hidden transition-all hover:shadow-md hover:-translate-y-0.5 cursor-pointer">
