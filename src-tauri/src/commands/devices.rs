@@ -1,5 +1,7 @@
 use hidpp::device;
-use hidpp::features::{BatteryInfo, ChargingStatus, BatteryLevel};
+use hidpp::features::BatteryInfo;
+#[cfg(test)]
+use hidpp::features::{ChargingStatus, BatteryLevel};
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
