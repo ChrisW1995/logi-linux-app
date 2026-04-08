@@ -138,11 +138,11 @@ impl<T: HidTransport> FeatureAccess<T> {
         Ok(())
     }
 
-    /// UnifiedBattery.GetCapabilities (feature 0x1004, function 0)
+    /// UnifiedBattery.GetStatus (feature 0x1004, function 1)
     /// Returns battery info from modern Logitech devices.
     pub fn get_unified_battery(&self) -> Result<BatteryInfo, HidppError> {
         let feature_index = self.get_feature_index(FEATURE_UNIFIED_BATTERY)?;
-        let report = HidppReport::new_long(self.device_index, feature_index, 0x00, SW_ID);
+        let report = HidppReport::new_long(self.device_index, feature_index, 0x01, SW_ID);
         let response = self.request(&report, 2000)?;
 
         let params = response.params();
@@ -387,7 +387,7 @@ mod tests {
     #[test]
     fn unified_battery_full_charged() {
         let get_feat = make_get_feature_response(0x01, 0x05); // feature index 5
-        let bat_resp = make_battery_response(0x01, 0x05, 0x00, &[100, 0x08, 2]); // 100%, Full, Full
+        let bat_resp = make_battery_response(0x01, 0x05, 0x01, &[100, 0x08, 2]); // 100%, Full, Full
         let transport = MockTransport::new(vec![get_feat, bat_resp]);
         let access = FeatureAccess::new(transport, 0x01);
 
@@ -400,7 +400,7 @@ mod tests {
     #[test]
     fn unified_battery_low_discharging() {
         let get_feat = make_get_feature_response(0x01, 0x05);
-        let bat_resp = make_battery_response(0x01, 0x05, 0x00, &[15, 0x02, 0]); // 15%, Low, Discharging
+        let bat_resp = make_battery_response(0x01, 0x05, 0x01, &[15, 0x02, 0]); // 15%, Low, Discharging
         let transport = MockTransport::new(vec![get_feat, bat_resp]);
         let access = FeatureAccess::new(transport, 0x01);
 

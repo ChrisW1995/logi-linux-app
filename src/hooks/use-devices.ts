@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   listDevices,
   getDeviceBattery,
@@ -15,29 +15,35 @@ export function useDevices() {
   const [devices, setDevices] = useState<DeviceWithBattery[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const refreshingRef = useRef(false);
 
   const refresh = useCallback(async () => {
+    // Prevent concurrent calls (StrictMode double-mount + polling)
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
+
     try {
       setLoading(true);
       setError(null);
       const devs = await listDevices();
 
-      const withBattery = await Promise.all(
-        devs.map(async (dev) => {
-          const bat = await getDeviceBattery(dev.path, dev.device_index);
-          return {
-            ...dev,
-            battery: bat.battery,
-            batteryError: bat.error,
-          };
-        }),
-      );
+      // Query battery sequentially to avoid hidraw contention
+      const withBattery: DeviceWithBattery[] = [];
+      for (const dev of devs) {
+        const bat = await getDeviceBattery(dev.path, dev.device_index);
+        withBattery.push({
+          ...dev,
+          battery: bat.battery,
+          batteryError: bat.error,
+        });
+      }
 
       setDevices(withBattery);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
+      refreshingRef.current = false;
     }
   }, []);
 
