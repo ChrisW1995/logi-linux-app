@@ -1,4 +1,4 @@
-use hidapi::{HidApi, HidDevice, DeviceInfo};
+use hidapi::{HidApi, HidDevice};
 use crate::error::HidppError;
 use crate::report::HidppReport;
 use crate::features::{HidTransport, FeatureAccess};
@@ -21,14 +21,6 @@ const RECEIVER_PIDS: &[u16] = &[
     0xC534, // Nano receiver
     0xC548, // Bolt
 ];
-
-/// HID++ 1.0 sub-IDs for register operations.
-const SUB_ID_SET_REGISTER: u8 = 0x80;
-const SUB_ID_GET_REGISTER: u8 = 0x81;
-const SUB_ID_ERROR: u8 = 0x8F;
-
-/// Receiver register addresses.
-const REG_RECEIVER_INFO: u8 = 0xB5;
 
 /// Information about a discovered Logitech HID++ device.
 #[derive(Debug, Clone)]
@@ -65,7 +57,10 @@ pub fn find_logitech_devices() -> Result<Vec<LogitechDeviceInfo>, HidppError> {
         if is_receiver(product_id) {
             debug!("Found receiver: {} (PID: 0x{:04X}) at {}", product_name, product_id, path);
             match probe_paired_devices(&api, &path, product_id) {
-                Ok(paired) => devices.extend(paired),
+                Ok(paired) => {
+                    info!("Receiver at {} has {} paired device(s)", path, paired.len());
+                    devices.extend(paired);
+                }
                 Err(e) => warn!("Failed to probe receiver at {}: {}", path, e),
             }
         } else {
@@ -79,6 +74,7 @@ pub fn find_logitech_devices() -> Result<Vec<LogitechDeviceInfo>, HidppError> {
         }
     }
 
+    info!("Total devices found: {}", devices.len());
     Ok(devices)
 }
 
@@ -86,103 +82,8 @@ fn is_receiver(product_id: u16) -> bool {
     RECEIVER_PIDS.contains(&product_id)
 }
 
-// ─── HID++ 1.0 Register Protocol ───────────────────────────────────────────
-
-/// Read a register from the receiver using HID++ 1.0 short report.
-/// Returns the 3 parameter bytes from the response, or None on error/timeout.
-fn register_read(device: &HidDevice, register: u8, params: &[u8]) -> Option<Vec<u8>> {
-    let mut report = [0u8; 7];
-    report[0] = 0x10; // short report
-    report[1] = 0xFF; // device index = receiver itself
-    report[2] = SUB_ID_GET_REGISTER;
-    report[3] = register;
-    for (i, &p) in params.iter().enumerate() {
-        if 4 + i < 7 {
-            report[4 + i] = p;
-        }
-    }
-
-    device.write(&report).ok()?;
-
-    let mut buf = [0u8; 64];
-    for _ in 0..10 {
-        let n = device.read_timeout(&mut buf, 500).ok()?;
-        if n == 0 {
-            return None;
-        }
-
-        // Match response: same sub_id and register
-        if buf[1] == 0xFF && buf[2] == SUB_ID_GET_REGISTER && buf[3] == register {
-            // Short report response: params at [4..7]
-            if n >= 7 {
-                return Some(buf[4..7].to_vec());
-            }
-        }
-
-        // Long report response (0x11) with same register
-        if buf[0] == 0x11 && buf[1] == 0xFF && buf[2] == SUB_ID_GET_REGISTER && buf[3] == register {
-            if n >= 20 {
-                return Some(buf[4..20].to_vec());
-            }
-        }
-
-        // Error response
-        if buf[2] == SUB_ID_ERROR {
-            debug!("Register read error: register=0x{:02X}, error=0x{:02X}", register, buf[5]);
-            return None;
-        }
-
-        // Non-matching response (notification etc.), skip and read next
-        debug!("Skipping non-matching response: sub_id=0x{:02X}", buf[2]);
-    }
-
-    None
-}
-
-/// Read a long register from the receiver (request via 0x11 long report).
-fn register_read_long(device: &HidDevice, register: u8, params: &[u8]) -> Option<Vec<u8>> {
-    let mut report = [0u8; 20];
-    report[0] = 0x11; // long report
-    report[1] = 0xFF; // device index = receiver itself
-    report[2] = SUB_ID_GET_REGISTER;
-    report[3] = register;
-    for (i, &p) in params.iter().enumerate() {
-        if 4 + i < 20 {
-            report[4 + i] = p;
-        }
-    }
-
-    device.write(&report).ok()?;
-
-    let mut buf = [0u8; 64];
-    for _ in 0..10 {
-        let n = device.read_timeout(&mut buf, 500).ok()?;
-        if n == 0 {
-            return None;
-        }
-
-        // Long report response
-        if buf[0] == 0x11 && buf[1] == 0xFF && buf[2] == SUB_ID_GET_REGISTER && buf[3] == register {
-            return Some(buf[4..n.min(20)].to_vec());
-        }
-
-        // Short report response (fallback)
-        if buf[0] == 0x10 && buf[1] == 0xFF && buf[2] == SUB_ID_GET_REGISTER && buf[3] == register {
-            return Some(buf[4..n.min(7)].to_vec());
-        }
-
-        // Error
-        if buf[2] == SUB_ID_ERROR {
-            return None;
-        }
-    }
-
-    None
-}
-
-// ─── Device Probing ────────────────────────────────────────────────────────
-
-/// Probe a receiver for paired devices using HID++ 1.0 register reads.
+/// Probe a receiver for paired devices using HID++ 2.0 IRoot requests.
+/// For each device index (1-6), sends IRoot.GetFeatureIndex and checks for response.
 fn probe_paired_devices(
     api: &HidApi,
     path: &str,
@@ -192,94 +93,123 @@ fn probe_paired_devices(
         .open_path(&std::ffi::CString::new(path).unwrap())
         .map_err(|e| HidppError::Io(e.to_string()))?;
 
-    let is_bolt = receiver_pid == 0xC548;
     let mut paired = Vec::new();
 
     for idx in 1u8..=6 {
-        // Step 1: Check if a device is paired at this index via receiver pairing info register
-        let pairing_sub = if is_bolt {
-            0x50 + idx
-        } else {
-            0x20 + (idx - 1)
-        };
+        debug!("Probing device index {}...", idx);
 
-        let pair_info = register_read(&device, REG_RECEIVER_INFO, &[pairing_sub]);
-        if pair_info.is_none() {
-            debug!("No device paired at index {} (no pairing info)", idx);
+        // Send IRoot.GetFeatureIndex(0x0001 = FeatureSet) to check if device exists
+        let mut report = HidppReport::new_long(idx, 0x00, 0x00, 0x01);
+        report.set_param(0, 0x00);
+        report.set_param(1, 0x01); // Feature 0x0001 = FeatureSet
+
+        if let Err(e) = device.write(report.as_bytes()) {
+            debug!("Write failed for index {}: {}", idx, e);
             continue;
         }
 
-        // Step 2: Read device codename from receiver
-        let codename = read_codename(&device, idx, is_bolt);
+        // Read responses with matching loop
+        match read_probe_response(&device, idx) {
+            ProbeResult::DeviceFound => {
+                debug!("Device found at index {}, reading name...", idx);
 
-        // Step 3: Try HID++ 2.0 DeviceName for full name (device must be online)
-        let full_name = read_device_name_hidpp20(&device, idx);
+                // Try to get device name via HID++ 2.0 feature 0x0005
+                let name = read_device_name(&device, idx);
+                let display_name = name.unwrap_or_else(|| format!("Logitech Device #{}", idx));
 
-        let display_name = full_name
-            .or(codename)
-            .unwrap_or_else(|| format!("Logitech Device #{}", idx));
-
-        debug!("Paired device at index {}: {}", idx, display_name);
-
-        paired.push(LogitechDeviceInfo {
-            path: path.to_string(),
-            product_id: receiver_pid,
-            product_name: display_name,
-            device_index: idx,
-        });
+                info!("Paired device at index {}: {}", idx, display_name);
+                paired.push(LogitechDeviceInfo {
+                    path: path.to_string(),
+                    product_id: receiver_pid,
+                    product_name: display_name,
+                    device_index: idx,
+                });
+            }
+            ProbeResult::NoDevice => {
+                debug!("No device at index {}", idx);
+            }
+            ProbeResult::Timeout => {
+                debug!("Timeout probing index {}", idx);
+            }
+        }
     }
 
     Ok(paired)
 }
 
-/// Read device codename from receiver register 0xB5.
-fn read_codename(device: &HidDevice, idx: u8, is_bolt: bool) -> Option<String> {
-    let params = if is_bolt {
-        vec![0x60 + idx, 0x01]
-    } else {
-        vec![0x40 + (idx - 1)]
-    };
-
-    let resp = register_read(&device, REG_RECEIVER_INFO, &params)?;
-
-    // Extract ASCII name bytes (skip leading zero/length bytes, stop at null or non-ASCII)
-    let name_bytes: Vec<u8> = if is_bolt {
-        // Bolt: name starts after some header bytes
-        resp.iter()
-            .copied()
-            .filter(|&b| b >= 0x20 && b < 0x7F)
-            .collect()
-    } else {
-        // Unifying: name is in the response payload
-        resp.iter()
-            .copied()
-            .filter(|&b| b >= 0x20 && b < 0x7F)
-            .collect()
-    };
-
-    if name_bytes.is_empty() {
-        return None;
-    }
-
-    String::from_utf8(name_bytes).ok()
+enum ProbeResult {
+    DeviceFound,
+    NoDevice,
+    Timeout,
 }
 
-/// Try to get device name via HID++ 2.0 feature 0x0005 (DeviceName).
-/// This requires the device to be online and support HID++ 2.0.
-fn read_device_name_hidpp20(device: &HidDevice, device_index: u8) -> Option<String> {
-    // IRoot.GetFeatureIndex(0x0005) on the device
+/// Read responses after a probe request, properly matching by device_index.
+fn read_probe_response(device: &HidDevice, device_index: u8) -> ProbeResult {
+    let mut buf = [0u8; 64];
+
+    for attempt in 0..10 {
+        let n = match device.read_timeout(&mut buf, 500) {
+            Ok(n) => n,
+            Err(e) => {
+                debug!("Read error on attempt {}: {}", attempt, e);
+                return ProbeResult::Timeout;
+            }
+        };
+
+        if n == 0 {
+            return ProbeResult::Timeout;
+        }
+
+        // Parse response
+        let resp = match HidppReport::from_bytes(&buf[..n]) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+
+        debug!(
+            "  Response: dev={} feat=0x{:02X} fn={} err={}",
+            resp.device_index(),
+            resp.feature_index(),
+            resp.function_id(),
+            resp.is_error()
+        );
+
+        // Must match our target device index
+        if resp.device_index() != device_index {
+            // Response for a different device index — skip
+            debug!("  Skipping response for device {}", resp.device_index());
+            continue;
+        }
+
+        // Error response for our device → no device or error
+        if resp.is_error() {
+            debug!("  Error response for device {}", device_index);
+            return ProbeResult::NoDevice;
+        }
+
+        // Valid response matching our device → device exists!
+        return ProbeResult::DeviceFound;
+    }
+
+    ProbeResult::Timeout
+}
+
+/// Read device name via HID++ 2.0 feature 0x0005 (DeviceName).
+fn read_device_name(device: &HidDevice, device_index: u8) -> Option<String> {
+    // Step 1: IRoot.GetFeatureIndex(0x0005)
     let mut report = HidppReport::new_long(device_index, 0x00, 0x00, 0x01);
     report.set_param(0, 0x00);
     report.set_param(1, 0x05);
     device.write(report.as_bytes()).ok()?;
 
-    let feat_idx = read_matching_response(device, device_index, 0x00, 0x00)?;
-    let feat_idx = feat_idx.params().first().copied().unwrap_or(0);
+    let resp = read_matching_response(device, device_index, 0x00, 0x00)?;
+    let feat_idx = resp.params().first().copied().unwrap_or(0);
     if feat_idx == 0 {
+        debug!("DeviceName feature not supported on device {}", device_index);
         return None;
     }
 
-    // GetDeviceNameCount (function 0)
+    // Step 2: GetDeviceNameCount (function 0)
     let report = HidppReport::new_long(device_index, feat_idx, 0x00, 0x01);
     device.write(report.as_bytes()).ok()?;
     let resp = read_matching_response(device, device_index, feat_idx, 0x00)?;
@@ -288,7 +218,7 @@ fn read_device_name_hidpp20(device: &HidDevice, device_index: u8) -> Option<Stri
         return None;
     }
 
-    // GetDeviceName (function 1) — read in chunks
+    // Step 3: GetDeviceName (function 1) — read in chunks
     let mut name_bytes = Vec::new();
     let mut offset: u8 = 0;
     while name_bytes.len() < name_len {
@@ -308,6 +238,7 @@ fn read_device_name_hidpp20(device: &HidDevice, device_index: u8) -> Option<Stri
 }
 
 /// Read HID++ 2.0 response matching device_index, feature_index, and function_id.
+/// Skips non-matching responses (notifications, other devices).
 fn read_matching_response(
     device: &HidDevice,
     device_index: u8,
@@ -320,9 +251,11 @@ fn read_matching_response(
         if n == 0 {
             return None;
         }
-        let resp = HidppReport::from_bytes(&buf[..n]).ok()?;
+        let resp = match HidppReport::from_bytes(&buf[..n]) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
 
-        // Error response for this device
         if resp.is_error() && resp.device_index() == device_index {
             return None;
         }
