@@ -1,7 +1,26 @@
 mod commands;
 
+fn check_solaar() {
+    #[cfg(target_os = "linux")]
+    {
+        use std::process::Command;
+        if let Ok(output) = Command::new("pgrep").arg("-x").arg("solaar").output() {
+            if output.status.success() {
+                eprintln!(
+                    "\x1b[33m[WARN]\x1b[0m Solaar is running. \
+                     Both apps access HID++ devices via hidraw, \
+                     which can cause response conflicts. \
+                     Consider stopping Solaar: killall solaar"
+                );
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    check_solaar();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![

@@ -161,20 +161,6 @@ verify_build() {
     info "Build verified"
 }
 
-check_solaar() {
-    if pgrep -x solaar &>/dev/null; then
-        warn "Solaar is running. Both apps access HID++ devices via hidraw,"
-        warn "which can cause response conflicts (timeouts or incorrect data)."
-        warn "Stop Solaar before running the app:"
-        echo ""
-        echo "    killall solaar"
-        echo "    # or: sudo systemctl stop solaar"
-        echo ""
-    else
-        info "Solaar not running (no conflict)"
-    fi
-}
-
 install_npm_deps() {
     local script_dir
     script_dir="$(cd "$(dirname "$0")" && pwd)"
@@ -201,7 +187,6 @@ main() {
     setup_udev
     install_npm_deps
     verify_build
-    check_solaar
 
     echo ""
     info "Setup complete! Run the app with:"
