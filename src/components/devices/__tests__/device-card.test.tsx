@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { DeviceCard } from "../device-card";
 import type { DeviceWithBattery } from "@/hooks/use-devices";
 
@@ -11,14 +12,23 @@ const baseDevice: DeviceWithBattery = {
   batteryError: null,
 };
 
+// DeviceCard renders a <Link>, so it needs a router context.
+function renderCard(device: DeviceWithBattery) {
+  return render(
+    <MemoryRouter>
+      <DeviceCard device={device} />
+    </MemoryRouter>,
+  );
+}
+
 describe("DeviceCard", () => {
   it("shows device name", () => {
-    render(<DeviceCard device={baseDevice} />);
+    renderCard(baseDevice);
     expect(screen.getByText("Test Mouse")).toBeInTheDocument();
   });
 
   it("shows 'No battery info' when battery is null", () => {
-    render(<DeviceCard device={baseDevice} />);
+    renderCard(baseDevice);
     expect(screen.getByText("No battery info")).toBeInTheDocument();
   });
 
@@ -31,7 +41,7 @@ describe("DeviceCard", () => {
         status: "Discharging" as const,
       },
     };
-    render(<DeviceCard device={device} />);
+    renderCard(device);
     expect(screen.getByText("75%")).toBeInTheDocument();
   });
 
@@ -44,7 +54,7 @@ describe("DeviceCard", () => {
         status: "Recharging" as const,
       },
     };
-    render(<DeviceCard device={device} />);
+    renderCard(device);
     expect(screen.getByText("Charging")).toBeInTheDocument();
   });
 
@@ -53,7 +63,7 @@ describe("DeviceCard", () => {
       ...baseDevice,
       product_id: "0xC548",
     };
-    render(<DeviceCard device={device} />);
+    renderCard(device);
     // c548 depot maps to a thumbnail in our catalog
     const img = screen.queryByRole("img");
     // Since c548 is the Bolt receiver and exists in catalog
@@ -63,7 +73,7 @@ describe("DeviceCard", () => {
   });
 
   it("falls back to icon when no thumbnail", () => {
-    render(<DeviceCard device={baseDevice} />);
+    renderCard(baseDevice);
     // No matching thumbnail for product_id "0x0000", should show Lucide icon
     expect(screen.queryByRole("img")).toBeNull();
   });

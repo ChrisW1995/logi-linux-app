@@ -1,14 +1,22 @@
 import { NavLink } from "react-router-dom";
 import { Mouse, MonitorSmartphone, Settings, Sun, Moon } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useTheme } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 
-const navItems = [
+type NavItem = {
+  to: string;
+  icon: LucideIcon;
+  label: string;
+  disabled?: boolean;
+};
+
+const navItems: NavItem[] = [
   { to: "/", icon: Mouse, label: "Devices" },
   { to: "/flow", icon: MonitorSmartphone, label: "Flow", disabled: true },
   { to: "/settings", icon: Settings, label: "Settings" },
-] as const;
+];
 
 export function Sidebar() {
   const { resolvedTheme, setTheme } = useTheme();
