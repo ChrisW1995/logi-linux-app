@@ -1,7 +1,8 @@
+import { Link } from "react-router-dom";
 import { Mouse, Keyboard, BatteryCharging } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { getDeviceThumbnail, getDeviceDisplayName } from "@/lib/device-image";
+import { getDeviceThumbnail } from "@/lib/device-image";
 import type { DeviceWithBattery } from "@/hooks/use-devices";
 
 function BatteryBar({ percentage }: { percentage: number }) {
@@ -38,6 +39,7 @@ export function DeviceCard({ device }: { device: DeviceWithBattery }) {
   const displayName = device.product_name;
 
   return (
+    <Link to={`/device/${encodeURIComponent(device.path)}/${device.device_index}?name=${encodeURIComponent(device.product_name)}`}>
     <Card className="group w-full overflow-hidden transition-all hover:shadow-md hover:-translate-y-0.5 cursor-pointer">
       <div className="flex items-center justify-center bg-secondary/50 p-6 h-40">
         {thumbnail ? (
@@ -78,5 +80,6 @@ export function DeviceCard({ device }: { device: DeviceWithBattery }) {
         )}
       </div>
     </Card>
+    </Link>
   );
 }

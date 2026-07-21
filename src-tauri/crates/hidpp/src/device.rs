@@ -1,9 +1,9 @@
-use hidapi::{HidApi, HidDevice};
 use crate::error::HidppError;
+use crate::features::{FeatureAccess, HidTransport};
 use crate::report::HidppReport;
-use crate::features::{HidTransport, FeatureAccess};
-use tracing::{debug, info, warn};
+use hidapi::{HidApi, HidDevice};
 use std::collections::HashSet;
+use tracing::{debug, info, warn};
 
 /// Logitech vendor ID.
 pub const LOGITECH_VID: u16 = 0x046d;
@@ -55,7 +55,10 @@ pub fn find_logitech_devices() -> Result<Vec<LogitechDeviceInfo>, HidppError> {
         let product_name = dev.product_string().unwrap_or("Unknown").to_string();
 
         if is_receiver(product_id) {
-            debug!("Found receiver: {} (PID: 0x{:04X}) at {}", product_name, product_id, path);
+            debug!(
+                "Found receiver: {} (PID: 0x{:04X}) at {}",
+                product_name, product_id, path
+            );
             match probe_paired_devices(&api, &path, product_id) {
                 Ok(paired) => {
                     info!("Receiver at {} has {} paired device(s)", path, paired.len());
@@ -64,7 +67,10 @@ pub fn find_logitech_devices() -> Result<Vec<LogitechDeviceInfo>, HidppError> {
                 Err(e) => warn!("Failed to probe receiver at {}: {}", path, e),
             }
         } else {
-            debug!("Found USB device: {} (PID: 0x{:04X}) at {}", product_name, product_id, path);
+            debug!(
+                "Found USB device: {} (PID: 0x{:04X}) at {}",
+                product_name, product_id, path
+            );
             devices.push(LogitechDeviceInfo {
                 path,
                 product_id,
@@ -175,7 +181,10 @@ fn read_probe_response(device: &HidDevice, device_index: u8) -> ProbeResult {
 
         // HID++ 1.0 error response (sub_id = 0x8F) — receiver says no device
         if sub_id == 0x8F {
-            debug!("  HID++ 1.0 error for device {} (error code: 0x{:02X})", device_index, buf[5]);
+            debug!(
+                "  HID++ 1.0 error for device {} (error code: 0x{:02X})",
+                device_index, buf[5]
+            );
             return ProbeResult::NoDevice;
         }
 
@@ -209,7 +218,10 @@ fn read_device_name(device: &HidDevice, device_index: u8) -> Option<String> {
     let resp = read_matching_response(device, device_index, 0x00, 0x00)?;
     let feat_idx = resp.params().first().copied().unwrap_or(0);
     if feat_idx == 0 {
-        debug!("DeviceName feature not supported on device {}", device_index);
+        debug!(
+            "DeviceName feature not supported on device {}",
+            device_index
+        );
         return None;
     }
 
@@ -295,7 +307,9 @@ impl HidApiTransport {
 
 impl HidTransport for HidApiTransport {
     fn write(&self, data: &[u8]) -> Result<usize, HidppError> {
-        self.device.write(data).map_err(|e| HidppError::Io(e.to_string()))
+        self.device
+            .write(data)
+            .map_err(|e| HidppError::Io(e.to_string()))
     }
 
     fn read_timeout(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, HidppError> {
@@ -306,7 +320,9 @@ impl HidTransport for HidApiTransport {
 }
 
 /// Open a Logitech device and return a FeatureAccess for HID++ communication.
-pub fn open_device(info: &LogitechDeviceInfo) -> Result<FeatureAccess<HidApiTransport>, HidppError> {
+pub fn open_device(
+    info: &LogitechDeviceInfo,
+) -> Result<FeatureAccess<HidApiTransport>, HidppError> {
     let transport = HidApiTransport::open(&info.path)?;
     Ok(FeatureAccess::new(transport, info.device_index))
 }

@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Sidebar } from "@/components/layout/sidebar";
 import { DevicesPage } from "@/pages/devices";
+import { DeviceDetailPage } from "@/pages/device-detail";
 import { FlowPage } from "@/pages/flow";
 import { SettingsPage } from "@/pages/settings";
 
@@ -14,6 +15,7 @@ export default function App() {
           <main className="flex-1 overflow-auto p-8">
             <Routes>
               <Route path="/" element={<DevicesPage />} />
+              <Route path="/device/:path/:deviceIndex" element={<DeviceDetailPage />} />
               <Route path="/flow" element={<FlowPage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Routes>

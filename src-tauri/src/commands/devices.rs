@@ -1,7 +1,7 @@
 use hidpp::device;
 use hidpp::features::BatteryInfo;
 #[cfg(test)]
-use hidpp::features::{ChargingStatus, BatteryLevel};
+use hidpp::features::{BatteryLevel, ChargingStatus};
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
@@ -51,10 +51,22 @@ pub async fn get_device_battery(path: String, device_index: u8) -> DeviceBattery
 
         match device::open_device(&info) {
             Ok(access) => match access.get_battery() {
-                Ok(battery) => DeviceBatteryDto { path, battery, error: None },
-                Err(e) => DeviceBatteryDto { path, battery: None, error: Some(e.to_string()) },
+                Ok(battery) => DeviceBatteryDto {
+                    path,
+                    battery,
+                    error: None,
+                },
+                Err(e) => DeviceBatteryDto {
+                    path,
+                    battery: None,
+                    error: Some(e.to_string()),
+                },
             },
-            Err(e) => DeviceBatteryDto { path, battery: None, error: Some(e.to_string()) },
+            Err(e) => DeviceBatteryDto {
+                path,
+                battery: None,
+                error: Some(e.to_string()),
+            },
         }
     })
     .await

@@ -1,4 +1,5 @@
 mod commands;
+pub mod config;
 
 fn check_solaar() {
     #[cfg(target_os = "linux")]
@@ -33,6 +34,20 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::devices::list_devices,
             commands::devices::get_device_battery,
+            commands::settings::get_device_capabilities,
+            commands::settings::get_device_firmware,
+            commands::settings::get_dpi_settings,
+            commands::settings::set_dpi,
+            commands::settings::get_smart_shift,
+            commands::settings::set_smart_shift,
+            commands::settings::get_hires_wheel,
+            commands::settings::set_hires_wheel_mode,
+            commands::settings::set_hires_wheel_ratchet,
+            commands::settings::get_reprog_controls,
+            commands::settings::set_reprog_control,
+            commands::settings::save_device_settings,
+            commands::settings::load_device_settings,
+            commands::settings::apply_device_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

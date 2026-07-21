@@ -28,7 +28,10 @@ impl HidppReport {
         data[1] = device_index;
         data[2] = feature_index;
         data[3] = (function_id << 4) | (sw_id & 0x0F);
-        Self { data, len: LONG_REPORT_LEN }
+        Self {
+            data,
+            len: LONG_REPORT_LEN,
+        }
     }
 
     /// Create a new short report.
@@ -38,7 +41,10 @@ impl HidppReport {
         data[1] = device_index;
         data[2] = feature_index;
         data[3] = (function_id << 4) | (sw_id & 0x0F);
-        Self { data, len: SHORT_REPORT_LEN }
+        Self {
+            data,
+            len: SHORT_REPORT_LEN,
+        }
     }
 
     pub fn report_id(&self) -> u8 {
@@ -79,22 +85,36 @@ impl HidppReport {
     /// Parse a report from raw bytes read from the device.
     pub fn from_bytes(data: &[u8]) -> Result<Self, HidppError> {
         if data.is_empty() {
-            return Err(HidppError::InvalidLength { expected: SHORT_REPORT_LEN, got: 0 });
+            return Err(HidppError::InvalidLength {
+                expected: SHORT_REPORT_LEN,
+                got: 0,
+            });
         }
 
         let len = match data[0] {
             SHORT_REPORT_ID => SHORT_REPORT_LEN,
             LONG_REPORT_ID => LONG_REPORT_LEN,
-            _ => return Err(HidppError::InvalidLength { expected: SHORT_REPORT_LEN, got: data.len() }),
+            _ => {
+                return Err(HidppError::InvalidLength {
+                    expected: SHORT_REPORT_LEN,
+                    got: data.len(),
+                })
+            }
         };
 
         if data.len() < len {
-            return Err(HidppError::InvalidLength { expected: len, got: data.len() });
+            return Err(HidppError::InvalidLength {
+                expected: len,
+                got: data.len(),
+            });
         }
 
         let mut report_data = [0u8; LONG_REPORT_LEN];
         report_data[..len].copy_from_slice(&data[..len]);
-        Ok(Self { data: report_data, len })
+        Ok(Self {
+            data: report_data,
+            len,
+        })
     }
 
     /// Check if this is an error response.
